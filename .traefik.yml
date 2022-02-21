@@ -1,0 +1,20 @@
+displayName: Traefik Get Real IP
+type: middleware
+
+import: github.com/paxxs/traefik-get-real-ip
+
+summary: When traefik is deployed behind a load balancer, it should get the real IP from the X-Forwarded-For or CDN specified header field. 
+
+testData:
+  Proxy:
+    - proxyHeadername: X-From-Cdn
+      proxyHeadervalue: 1
+      realIP: X-Forwarded-For
+    - proxyHeadername: X-From-Cdn
+      proxyHeadervalue: 2
+      realIP: Client-Ip
+    - proxyHeadername: X-From-Cdn
+      proxyHeadervalue: 3
+      realIP: Cf-Connecting-Ip
+    - proxyHeadername: "*"
+      realIP: RemoteAddr
