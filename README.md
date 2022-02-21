@@ -41,7 +41,7 @@ Rules > Transform Rules > HTTP Request Header Modification > Add
 ### Static
 
 ```yml
-moduleName: github.com/paxxs/traefik-get-real-ip
+moduleName: github.com/Paxxs/traefik-get-real-ip
 version: v1.0.0
 ```
 
@@ -56,7 +56,7 @@ pilot:
 experimental:
   plugins:
     real-ip:
-      moduleName: github.com/paxxs/traefik-get-real-ip
+      moduleName: github.com/Paxxs/traefik-get-real-ip
       version: v1.0.0
 ```
 
