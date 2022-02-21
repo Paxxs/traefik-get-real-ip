@@ -1,3 +1,3 @@
-module github.com/paxxs/traefik-get-real-ip
+module github.com/Paxxs/traefik-get-real-ip
 
 go 1.13
