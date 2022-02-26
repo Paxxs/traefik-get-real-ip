@@ -2,7 +2,7 @@ package traefik_get_real_ip
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -39,7 +39,7 @@ type GetRealIP struct {
 
 // New creates and returns a new realip plugin instance.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	log.Printf("☃️ All Config：'%v',Proxy Settings len: '%d'", config, len(config.Proxy))
+	fmt.Printf("☃️ All Config：'%v',Proxy Settings len: '%d'\n", config, len(config.Proxy))
 
 	return &GetRealIP{
 		next:  next,
@@ -53,7 +53,7 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
 	var realIP string
 	for _, proxy := range g.proxy {
-		log.Printf("🐸 Current Proxy：%s", proxy.ProxyHeadervalue)
+		fmt.Printf("🐸 Current Proxy：%s\n", proxy.ProxyHeadervalue)
 		if req.Header.Get(proxy.ProxyHeadername) == "*" || (req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue) {
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
@@ -63,12 +63,12 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			forwardedIPs := strings.Split(nIP, ",")
 			// 从头部获取到IP并分割（主要担心xff有多个IP）
 			// 只有单个IP也只会返回单个IP slice
-			log.Printf("👀 IPs: '%d' detail:'%v'", len(forwardedIPs), forwardedIPs)
+			fmt.Printf("👀 IPs: '%d' detail:'%v'\n", len(forwardedIPs), forwardedIPs)
 			// 如果有多个，得到第一个 IP
 			for i := 0; i <= len(forwardedIPs)-1; i++ {
 				trimmedIP := strings.TrimSpace(forwardedIPs[i])
 				excluded := g.excludedIP(trimmedIP)
-				log.Printf("exluded:%t， currentIP:%s, index:%d", excluded, trimmedIP, i)
+				fmt.Printf("exluded:%t， currentIP:%s, index:%d\n", excluded, trimmedIP, i)
 				if !excluded {
 					realIP = trimmedIP
 					break
