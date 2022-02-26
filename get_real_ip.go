@@ -13,6 +13,7 @@ const (
 	xForwardedFor = "X-Forwarded-For"
 )
 
+// Proxy 配置文件中的数组结构
 type Proxy struct {
 	ProxyHeadername  string `yaml:"proxyHeadername"`
 	ProxyHeadervalue string `yaml:"proxyHeadervalue"`
@@ -29,13 +30,14 @@ func CreateConfig() *Config {
 	return &Config{}
 }
 
-// Define plugin
+// GetRealIP Define plugin
 type GetRealIP struct {
 	next  http.Handler
 	name  string
 	proxy []Proxy
 }
 
+// New creates and returns a new realip plugin instance.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	log.Printf("☃️ All Config：'%v',Proxy Settings len: '%d'", config, len(config.Proxy))
 
