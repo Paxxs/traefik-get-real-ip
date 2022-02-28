@@ -59,7 +59,7 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
 			if proxy.RealIP == "RemoteAddr" {
-				nIP = req.RemoteAddr
+				nIP, _, _ = net.SplitHostPort(req.RemoteAddr)
 			}
 			forwardedIPs := strings.Split(nIP, ",")
 			// 从头部获取到IP并分割（主要担心xff有多个IP）
