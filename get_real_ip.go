@@ -18,6 +18,7 @@ type Proxy struct {
 	ProxyHeadername  string `yaml:"proxyHeadername"`
 	ProxyHeadervalue string `yaml:"proxyHeadervalue"`
 	RealIP           string `yaml:"realIP"`
+	OverwriteXFF     bool   `yaml:"overwriteXFF"` // override X-Forwarded-For
 }
 
 // Config the plugin configuration.
@@ -53,12 +54,12 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
 	var realIP string
 	for _, proxy := range g.proxy {
-		fmt.Printf("🐸 Current Proxy：%s\n", proxy.ProxyHeadervalue)
 		if req.Header.Get(proxy.ProxyHeadername) == "*" || (req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue) {
+			fmt.Printf("🐸 Current Proxy：%s\n", proxy.ProxyHeadervalue)
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
 			if proxy.RealIP == "RemoteAddr" {
-				nIP = req.RemoteAddr
+				nIP, _, _ = net.SplitHostPort(req.RemoteAddr)
 			}
 			forwardedIPs := strings.Split(nIP, ",")
 			// 从头部获取到IP并分割（主要担心xff有多个IP）
@@ -77,7 +78,10 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		// 获取到后直接设定 realIP
 		if realIP != "" {
-			// req.Header.Set(xForwardedFor, realIP)
+			if proxy.OverwriteXFF {
+				fmt.Println("🐸 Modify XFF to:", realIP)
+				req.Header.Set(xForwardedFor, realIP)
+			}
 			req.Header.Set(xRealIP, realIP)
 			break
 		}
