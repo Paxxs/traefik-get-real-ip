@@ -44,6 +44,7 @@ Plugin Info:
 - moduleName: `github.com/Paxxs/traefik-get-real-ip`
 - version: `v1.0.2`
 
+Traefik Configuration:
 - yml
 - toml
 - docker-labels
