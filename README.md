@@ -40,10 +40,9 @@ Rules > Transform Rules > HTTP Request Header Modification > Add
 ## Traefik Configuration
 ### Static
 
-```yml
-moduleName: github.com/Paxxs/traefik-get-real-ip
-version: v1.0.1
-```
+Plugin Info:
+- moduleName: `github.com/Paxxs/traefik-get-real-ip`
+- version: `v1.0.2`
 
 - yml
 - toml
@@ -57,7 +56,7 @@ experimental:
   plugins:
     real-ip:
       moduleName: github.com/Paxxs/traefik-get-real-ip
-      version: v1.0.1
+      version: [Please fill the latest version !]
 ```
 
 ### Dynamic
@@ -80,9 +79,11 @@ http:
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: mf-bar
               realIP: Client-Ip
+              OverwriteXFF: true # default: false, v1.0.2 or above
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: cf-foo
               realIP: Cf-Connecting-Ip
+              OverwriteXFF: true # default: false, v1.0.2 or above
             - proxyHeadername: "*"
               realIP: RemoteAddr
 
