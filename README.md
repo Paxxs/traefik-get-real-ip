@@ -80,9 +80,11 @@ http:
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: mf-bar
               realIP: Client-Ip
+              OverwriteXFF: true
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: cf-foo
               realIP: Cf-Connecting-Ip
+              OverwriteXFF: true
             - proxyHeadername: "*"
               realIP: RemoteAddr
 

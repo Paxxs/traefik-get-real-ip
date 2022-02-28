@@ -16,5 +16,6 @@ testData:
     - proxyHeadername: X-From-Cdn
       proxyHeadervalue: cdn3
       realIP: Cf-Connecting-Ip
+      overwriteXFF: true
     - proxyHeadername: "*"
       realIP: RemoteAddr
