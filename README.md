@@ -37,6 +37,10 @@ Rules > Transform Rules > HTTP Request Header Modification > Add
 - Set static Header: `X-From-Cdn`
   - Value: `cf-foo`
 
+![image](https://user-images.githubusercontent.com/10364775/164590908-43edab8a-cdc8-4d4c-abd6-542b6c798f3b.png)
+
+![image](https://user-images.githubusercontent.com/10364775/164591134-4dd2fc97-cd0e-4deb-8fe3-bcd4555ebbde.png)
+
 ## Traefik Configuration
 ### Static
 
