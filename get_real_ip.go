@@ -55,17 +55,16 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
 	var realIPStr string
 	for _, proxy := range g.proxy {
-		headerValue := req.Header.Get(proxy.ProxyHeadername)
-		if headerValue == "*" || headerValue == proxy.ProxyHeadervalue {
-			log("🐸  Current Proxy：%s", proxy.ProxyHeadervalue)
+		if proxy.ProxyHeadername == "*" || req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue {
+			log("🐸  Current Proxy：%s(%s)", proxy.ProxyHeadervalue, proxy.ProxyHeadername)
 
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
 			if proxy.RealIP == "RemoteAddr" {
 				nIP, _, _ = net.SplitHostPort(req.RemoteAddr)
 			}
-			forwardedIPs := strings.Split(nIP, ",")
-			// 从头部获取到IP并分割（主要担心xff有多个IP）
+			forwardedIPs := strings.Split(nIP, ",") // 从头部获取到IP并分割（主要担心xff有多个IP）
+
 			// 只有单个IP也只会返回单个IP slice
 			log("👀  IPs:'%v' %d", forwardedIPs, len(forwardedIPs))
 			// 如果有多个，得到第一个 IP
