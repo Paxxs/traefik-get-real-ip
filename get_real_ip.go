@@ -53,9 +53,10 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 // 真正干事情了
 func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
-	var realIP string
+	var realIPStr string
 	for _, proxy := range g.proxy {
-		if req.Header.Get(proxy.ProxyHeadername) == "*" || (req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue) {
+		headerValue := req.Header.Get(proxy.ProxyHeadername)
+		if headerValue == "*" || headerValue == proxy.ProxyHeadervalue {
 			log("🐸  Current Proxy：%s", proxy.ProxyHeadervalue)
 
 			// CDN来源确定
@@ -66,37 +67,42 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			forwardedIPs := strings.Split(nIP, ",")
 			// 从头部获取到IP并分割（主要担心xff有多个IP）
 			// 只有单个IP也只会返回单个IP slice
-			log("👀  IPs:'%v'-%d", forwardedIPs, len(forwardedIPs))
+			log("👀  IPs:'%v' %d", forwardedIPs, len(forwardedIPs))
 			// 如果有多个，得到第一个 IP
 			for i := 0; i <= len(forwardedIPs)-1; i++ {
 				trimmedIP := strings.TrimSpace(forwardedIPs[i])
-				excluded := g.excludedIP(trimmedIP)
-				log("exluded:%t， currentIP:%s, index:%d", excluded, trimmedIP, i)
-				if !excluded {
-					realIP = trimmedIP
+				finalIP := g.getIP(trimmedIP)
+				log("currentIP:%s, index:%d, result:%s", trimmedIP, i, finalIP)
+				if finalIP != nil {
+					realIPStr = finalIP.String()
 					break
 				}
 			}
 		}
 		// 获取到后直接设定 realIP
-		if realIP != "" {
+		if realIPStr != "" {
 			if proxy.OverwriteXFF {
-				log("🐸  Modify XFF to:%s", realIP)
-				req.Header.Set(xForwardedFor, realIP)
+				log("🐸  Modify XFF to:%s", realIPStr)
+				req.Header.Set(xForwardedFor, realIPStr)
 			}
-			req.Header.Set(xRealIP, realIP)
+			req.Header.Set(xRealIP, realIPStr)
 			break
 		}
 	}
 	g.next.ServeHTTP(rw, req)
 }
 
-// excludedIP 判断给定的字符串是否是一个被排除的 IP 地址。
-// 参数 s 是待检查的 IP 地址字符串。
-// 返回值是一个布尔值，若给定的字符串不是一个合法的 IP 地址，则返回 true；否则返回 false。
-func (g *GetRealIP) excludedIP(s string) bool {
-	ip := net.ParseIP(s)
-	return ip == nil
+// getIP 是用来获取有效IP的，传入参数 s 为 ip文本，格式为 x.x.x.x 或 x.x.x.x:1234
+//
+// getIP is used to obtain valid IP addresses. The parameter s is the input IP text,
+// which should be in the format of x.x.x.x or x.x.x.x:1234.
+func (g *GetRealIP) getIP(s string) net.IP {
+	pureIP, _, err := net.SplitHostPort(s) // 如果有端口号则分离得到ip
+	if err != nil {
+		pureIP = s
+	}
+	ip := net.ParseIP(pureIP) // 解析是否为合法 ip
+	return ip
 }
 
 // log 是用于输出日志，使用方法类似 Sprintf，但末尾已经包含换行
