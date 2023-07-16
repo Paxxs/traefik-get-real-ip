@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -40,7 +41,7 @@ type GetRealIP struct {
 
 // New creates and returns a new realip plugin instance.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	fmt.Printf("☃️ All Config：'%v',Proxy Settings len: '%d'\n", config, len(config.Proxy))
+	log("☃️  Config loaded.(%d) %v", len(config.Proxy), config)
 
 	return &GetRealIP{
 		next:  next,
@@ -55,7 +56,8 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	var realIP string
 	for _, proxy := range g.proxy {
 		if req.Header.Get(proxy.ProxyHeadername) == "*" || (req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue) {
-			fmt.Printf("🐸 Current Proxy：%s\n", proxy.ProxyHeadervalue)
+			log("🐸  Current Proxy：%s", proxy.ProxyHeadervalue)
+
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
 			if proxy.RealIP == "RemoteAddr" {
@@ -64,12 +66,12 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			forwardedIPs := strings.Split(nIP, ",")
 			// 从头部获取到IP并分割（主要担心xff有多个IP）
 			// 只有单个IP也只会返回单个IP slice
-			fmt.Printf("👀 IPs: '%d' detail:'%v'\n", len(forwardedIPs), forwardedIPs)
+			log("👀  IPs:'%v'-%d", forwardedIPs, len(forwardedIPs))
 			// 如果有多个，得到第一个 IP
 			for i := 0; i <= len(forwardedIPs)-1; i++ {
 				trimmedIP := strings.TrimSpace(forwardedIPs[i])
 				excluded := g.excludedIP(trimmedIP)
-				fmt.Printf("exluded:%t， currentIP:%s, index:%d\n", excluded, trimmedIP, i)
+				log("exluded:%t， currentIP:%s, index:%d", excluded, trimmedIP, i)
 				if !excluded {
 					realIP = trimmedIP
 					break
@@ -79,7 +81,7 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		// 获取到后直接设定 realIP
 		if realIP != "" {
 			if proxy.OverwriteXFF {
-				fmt.Println("🐸 Modify XFF to:", realIP)
+				log("🐸  Modify XFF to:%s", realIP)
 				req.Header.Set(xForwardedFor, realIP)
 			}
 			req.Header.Set(xRealIP, realIP)
@@ -89,8 +91,26 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	g.next.ServeHTTP(rw, req)
 }
 
-// 排除非IP
+// excludedIP 判断给定的字符串是否是一个被排除的 IP 地址。
+// 参数 s 是待检查的 IP 地址字符串。
+// 返回值是一个布尔值，若给定的字符串不是一个合法的 IP 地址，则返回 true；否则返回 false。
 func (g *GetRealIP) excludedIP(s string) bool {
 	ip := net.ParseIP(s)
 	return ip == nil
 }
+
+// log 是用于输出日志，使用方法类似 Sprintf，但末尾已经包含换行
+//
+// log is used for logging output, with a usage similar to Sprintf,
+// but it already includes a newline character at the end.
+func log(format string, a ...interface{}) {
+	os.Stdout.WriteString("[get-realip] " + fmt.Sprintf(format, a...) + "\n")
+}
+
+// err是用于输出错误日志，使用方法类似 Sprintf，但末尾已经包含换行
+//
+// err is used for output err logs, and it usage is simillar to Sprintf,
+// but with a newline character already included at the end.
+// func err(format string, a ...interface{}) {
+// 	os.Stderr.WriteString(fmt.Sprintf(format, a...) + "\n")
+// }
