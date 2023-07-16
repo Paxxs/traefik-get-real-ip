@@ -2,7 +2,11 @@
 
 <!-- cspell:words traefik middlewares proxyHeadername proxyHeadervalue Kubernetes -->
 
-When traefik is deployed behind multiple load balancers, use this plugin to detect the different load balancers and get the real IP from different header fields
+When traefik is deployed behind multiple load balancers, this plugin can be used to detect different load balancers and extract the real IP from different header fields, then output the value to the `x-real-ip` header.
+
+This plugin can prevent IP spoofing by checking if the values form the received header information of the load balancer match before extracting the IP address.
+
+For example, in the configuration of `CloudFlare` load balancer shown below, we configure it to only accept the header `x-from-cdn` with a value equal to `cf-foo`, and extract the IP address from the `Cf-Connecting-Ip` header. Since users never know about the existence of the `x-from-cdn` header or its required value `cf-foo`, it remains secure 🛡️. To increase complexity and avoid being guessed, you can use a random string :)
 
 ```
  CloudFlare

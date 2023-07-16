@@ -1,9 +1,9 @@
 displayName: Traefik Get Real IP
 type: middleware
-
 import: github.com/Paxxs/traefik-get-real-ip
+iconPath: .assets/icon.png
 
-summary: When traefik is deployed behind multiple load balancers, use this plugin to detect the different load balancers and get the real IP from different header fields
+summary: By retrieving the correct real IP from single or multiple different load balancers(eg.Cloudflare), this plugin effectively prevents IP spoofing.
 
 testData:
   Proxy:

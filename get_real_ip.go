@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -40,7 +41,7 @@ type GetRealIP struct {
 
 // New creates and returns a new realip plugin instance.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	fmt.Printf("☃️ All Config：'%v',Proxy Settings len: '%d'\n", config, len(config.Proxy))
+	log("☃️  Config loaded.(%d) %v", len(config.Proxy), config)
 
 	return &GetRealIP{
 		next:  next,
@@ -52,45 +53,69 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 // 真正干事情了
 func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
-	var realIP string
+	var realIPStr string
 	for _, proxy := range g.proxy {
-		if req.Header.Get(proxy.ProxyHeadername) == "*" || (req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue) {
-			fmt.Printf("🐸 Current Proxy：%s\n", proxy.ProxyHeadervalue)
+		if proxy.ProxyHeadername == "*" || req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue {
+			log("🐸  Current Proxy：%s(%s)", proxy.ProxyHeadervalue, proxy.ProxyHeadername)
+
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
 			if proxy.RealIP == "RemoteAddr" {
 				nIP, _, _ = net.SplitHostPort(req.RemoteAddr)
 			}
-			forwardedIPs := strings.Split(nIP, ",")
-			// 从头部获取到IP并分割（主要担心xff有多个IP）
+			forwardedIPs := strings.Split(nIP, ",") // 从头部获取到IP并分割（主要担心xff有多个IP）
+
 			// 只有单个IP也只会返回单个IP slice
-			fmt.Printf("👀 IPs: '%d' detail:'%v'\n", len(forwardedIPs), forwardedIPs)
+			log("👀  IPs:'%v' %d", forwardedIPs, len(forwardedIPs))
 			// 如果有多个，得到第一个 IP
 			for i := 0; i <= len(forwardedIPs)-1; i++ {
 				trimmedIP := strings.TrimSpace(forwardedIPs[i])
-				excluded := g.excludedIP(trimmedIP)
-				fmt.Printf("exluded:%t， currentIP:%s, index:%d\n", excluded, trimmedIP, i)
-				if !excluded {
-					realIP = trimmedIP
+				finalIP := g.getIP(trimmedIP)
+				log("currentIP:%s, index:%d, result:%s", trimmedIP, i, finalIP)
+				if finalIP != nil {
+					realIPStr = finalIP.String()
 					break
 				}
 			}
 		}
 		// 获取到后直接设定 realIP
-		if realIP != "" {
+		if realIPStr != "" {
 			if proxy.OverwriteXFF {
-				fmt.Println("🐸 Modify XFF to:", realIP)
-				req.Header.Set(xForwardedFor, realIP)
+				log("🐸  Modify XFF to:%s", realIPStr)
+				req.Header.Set(xForwardedFor, realIPStr)
 			}
-			req.Header.Set(xRealIP, realIP)
+			req.Header.Set(xRealIP, realIPStr)
 			break
 		}
 	}
 	g.next.ServeHTTP(rw, req)
 }
 
-// 排除非IP
-func (g *GetRealIP) excludedIP(s string) bool {
-	ip := net.ParseIP(s)
-	return ip == nil
+// getIP 是用来获取有效IP的，传入参数 s 为 ip文本，格式为 x.x.x.x 或 x.x.x.x:1234
+//
+// getIP is used to obtain valid IP addresses. The parameter s is the input IP text,
+// which should be in the format of x.x.x.x or x.x.x.x:1234.
+func (g *GetRealIP) getIP(s string) net.IP {
+	pureIP, _, err := net.SplitHostPort(s) // 如果有端口号则分离得到ip
+	if err != nil {
+		pureIP = s
+	}
+	ip := net.ParseIP(pureIP) // 解析是否为合法 ip
+	return ip
 }
+
+// log 是用于输出日志，使用方法类似 Sprintf，但末尾已经包含换行
+//
+// log is used for logging output, with a usage similar to Sprintf,
+// but it already includes a newline character at the end.
+func log(format string, a ...interface{}) {
+	os.Stdout.WriteString("[get-realip] " + fmt.Sprintf(format, a...) + "\n")
+}
+
+// err是用于输出错误日志，使用方法类似 Sprintf，但末尾已经包含换行
+//
+// err is used for output err logs, and it usage is simillar to Sprintf,
+// but with a newline character already included at the end.
+// func err(format string, a ...interface{}) {
+// 	os.Stderr.WriteString(fmt.Sprintf(format, a...) + "\n")
+// }
