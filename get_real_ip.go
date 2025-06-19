@@ -24,39 +24,44 @@ type Proxy struct {
 
 // Config the plugin configuration.
 type Config struct {
-	Proxy []Proxy `yaml:"proxy"`
+	Proxy     []Proxy `yaml:"proxy"`
+	EnableLog bool    `yaml:"enableLog"` // Enable logging output
 }
 
 // CreateConfig creates the default plugin configuration.
 func CreateConfig() *Config {
-	return &Config{}
+	return &Config{
+		EnableLog: false, // Logging disabled by default
+	}
 }
 
 // GetRealIP Define plugin
 type GetRealIP struct {
-	next  http.Handler
-	name  string
-	proxy []Proxy
+	next      http.Handler
+	name      string
+	proxy     []Proxy
+	enableLog bool
 }
 
 // New creates and returns a new realip plugin instance.
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	log("☃️  Config loaded.(%d) %v", len(config.Proxy), config)
+	// Always log instance creation regardless of log settings
+	fmt.Printf("[get-realip] Instance created with %d proxy configurations\n", len(config.Proxy))
 
 	return &GetRealIP{
-		next:  next,
-		name:  name,
-		proxy: config.Proxy,
+		next:      next,
+		name:      name,
+		proxy:     config.Proxy,
+		enableLog: config.EnableLog,
 	}, nil
 }
 
 // 真正干事情了
 func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	// fmt.Println("☃️当前配置：", g.proxy, "remoteaddr", req.RemoteAddr)
 	var realIPStr string
 	for _, proxy := range g.proxy {
 		if proxy.ProxyHeadername == "*" || req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue {
-			log("🐸  Current Proxy：%s(%s)", proxy.ProxyHeadervalue, proxy.ProxyHeadername)
+			g.log("Processing proxy configuration: %s (%s)", proxy.ProxyHeadervalue, proxy.ProxyHeadername)
 
 			// CDN来源确定
 			nIP := req.Header.Get(proxy.RealIP)
@@ -65,13 +70,12 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 			forwardedIPs := strings.Split(nIP, ",") // 从头部获取到IP并分割（主要担心xff有多个IP）
 
-			// 只有单个IP也只会返回单个IP slice
-			log("👀  IPs:'%v' %d", forwardedIPs, len(forwardedIPs))
+			g.log("Processing IP addresses: %v (%d found)", forwardedIPs, len(forwardedIPs))
 			// 如果有多个，得到第一个 IP
 			for i := 0; i <= len(forwardedIPs)-1; i++ {
 				trimmedIP := strings.TrimSpace(forwardedIPs[i])
 				finalIP := g.getIP(trimmedIP)
-				log("currentIP:%s, index:%d, result:%s", trimmedIP, i, finalIP)
+				g.log("Validating IP: %s (index: %d, parsed: %s)", trimmedIP, i, finalIP)
 				if finalIP != nil {
 					realIPStr = finalIP.String()
 					break
@@ -81,7 +85,7 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		// 获取到后直接设定 realIP
 		if realIPStr != "" {
 			if proxy.OverwriteXFF {
-				log("🐸  Modify XFF to:%s", realIPStr)
+				g.log("Overwriting X-Forwarded-For header with: %s", realIPStr)
 				req.Header.Set(xForwardedFor, realIPStr)
 			}
 			req.Header.Set(xRealIP, realIPStr)
@@ -91,8 +95,6 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	g.next.ServeHTTP(rw, req)
 }
 
-// getIP 是用来获取有效IP的，传入参数 s 为 ip文本，格式为 x.x.x.x 或 x.x.x.x:1234
-//
 // getIP is used to obtain valid IP addresses. The parameter s is the input IP text,
 // which should be in the format of x.x.x.x or x.x.x.x:1234.
 func (g *GetRealIP) getIP(s string) net.IP {
@@ -104,18 +106,10 @@ func (g *GetRealIP) getIP(s string) net.IP {
 	return ip
 }
 
-// log 是用于输出日志，使用方法类似 Sprintf，但末尾已经包含换行
-//
-// log is used for logging output, with a usage similar to Sprintf,
-// but it already includes a newline character at the end.
-func log(format string, a ...interface{}) {
-	os.Stdout.WriteString("[get-realip] " + fmt.Sprintf(format, a...) + "\n")
+// log is a method of GetRealIP that outputs logs only if logging is enabled.
+// Usage is similar to fmt.Sprintf, but it automatically includes a prefix and newline.
+func (g *GetRealIP) log(format string, a ...interface{}) {
+	if g.enableLog {
+		os.Stdout.WriteString("[get-realip] " + fmt.Sprintf(format, a...) + "\n")
+	}
 }
-
-// err是用于输出错误日志，使用方法类似 Sprintf，但末尾已经包含换行
-//
-// err is used for output err logs, and it usage is simillar to Sprintf,
-// but with a newline character already included at the end.
-// func err(format string, a ...interface{}) {
-// 	os.Stderr.WriteString(fmt.Sprintf(format, a...) + "\n")
-// }

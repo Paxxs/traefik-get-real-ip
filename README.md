@@ -81,6 +81,7 @@ http:
     real-ip-foo:
       plugin:
         real-ip:
+          enableLog: false # default: false, enable to see detailed logs
           Proxy:
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: mf-fun

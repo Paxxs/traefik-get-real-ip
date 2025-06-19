@@ -6,6 +6,7 @@ iconPath: .assets/icon.png
 summary: By retrieving the correct real IP from single or multiple different load balancers(eg.Cloudflare), this plugin effectively prevents IP spoofing.
 
 testData:
+  enableLog: false
   Proxy:
     - proxyHeadername: X-From-Cdn
       proxyHeadervalue: cdn1
