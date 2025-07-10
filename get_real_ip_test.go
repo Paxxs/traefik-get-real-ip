@@ -3,8 +3,11 @@ package traefik_get_real_ip_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	plugin "github.com/Paxxs/traefik-get-real-ip"
@@ -145,5 +148,71 @@ func assertHeader(t *testing.T, req *http.Request, key, expected string) {
 	t.Helper()
 	if req.Header.Get(key) != expected {
 		t.Errorf("invalid header value: got %s, want %s", req.Header.Get(key), expected)
+	}
+}
+
+func TestLogging(t *testing.T) {
+	// Create a pipe to capture stdout
+	r, w, _ := os.Pipe()
+	originalStdout := os.Stdout
+	os.Stdout = w
+
+	// Create plugin config with logging enabled
+	cfg := plugin.CreateConfig()
+	cfg.EnableLog = true
+	cfg.Proxy = []plugin.Proxy{
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "1",
+			RealIP:           "X-Forwarded-For",
+		},
+	}
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {})
+
+	handler, err := plugin.New(ctx, next, cfg, "traefik-get-real-ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.RemoteAddr = "192.168.1.1:1234"
+	req.Header.Set("X-From-Cdn", "1")
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+
+	// Serve the request
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	// Restore stdout and read the captured output
+	w.Close()
+	os.Stdout = originalStdout
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// Check if logs contain expected messages
+	expectedLogs := []string{
+		"[get-realip] Instance created",
+		"[get-realip] Processing proxy configuration",
+		"[get-realip] Processing IP addresses",
+		"[get-realip] Validating IP",
+	}
+
+	for _, expected := range expectedLogs {
+		if !strings.Contains(output, expected) {
+			t.Errorf("Expected log output to contain '%s', but got:\n%s", expected, output)
+		}
+	}
+
+	// Verify that X-Real-Ip was set correctly
+	if req.Header.Get("X-Real-Ip") != "10.0.0.1" {
+		t.Errorf("Expected X-Real-Ip to be set to '10.0.0.1', but got '%s'", req.Header.Get("X-Real-Ip"))
 	}
 }
