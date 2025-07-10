@@ -216,3 +216,282 @@ func TestLogging(t *testing.T) {
 		t.Errorf("Expected X-Real-Ip to be set to '10.0.0.1', but got '%s'", req.Header.Get("X-Real-Ip"))
 	}
 }
+
+func TestDeny403OnFail(t *testing.T) {
+	// Create plugin config with deny403OnFail enabled
+	cfg := plugin.CreateConfig()
+	cfg.Deny403OnFail = true
+	cfg.Proxy = []plugin.Proxy{
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "1",
+			RealIP:           "X-Forwarded-For",
+		},
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "2",
+			RealIP:           "Client-Ip",
+		},
+	}
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// This should not be called when 403 is returned
+		rw.WriteHeader(http.StatusOK)
+	})
+
+	handler, err := plugin.New(ctx, next, cfg, "traefik-get-real-ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		desc           string
+		xFromProxy     string
+		expectedStatus int
+	}{
+		{
+			desc:           "Matching proxy - should pass through",
+			xFromProxy:     "1",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			desc:           "Non-matching proxy - should return 403",
+			xFromProxy:     "3", // Not in config
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			desc:           "Empty proxy header - should return 403",
+			xFromProxy:     "",
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			req.RemoteAddr = "192.168.1.1:1234"
+			if test.xFromProxy != "" {
+				req.Header.Set("X-From-Cdn", test.xFromProxy)
+			}
+			req.Header.Set("X-Forwarded-For", "10.0.0.1")
+
+			handler.ServeHTTP(recorder, req)
+
+			// Check response status code
+			if recorder.Code != test.expectedStatus {
+				t.Errorf("Expected status %d, got %d", test.expectedStatus, recorder.Code)
+			}
+
+			// For successful requests, verify the X-Real-Ip header was set
+			if test.expectedStatus == http.StatusOK {
+				if req.Header.Get("X-Real-Ip") == "" {
+					t.Error("X-Real-Ip header not set for valid request")
+				}
+			}
+		})
+	}
+}
+
+// Test that deny403OnFail=false allows all requests
+func TestDeny403Disabled(t *testing.T) {
+	// Create plugin config with deny403OnFail disabled
+	cfg := plugin.CreateConfig()
+	cfg.Deny403OnFail = false // Default behavior
+	cfg.Proxy = []plugin.Proxy{
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "1",
+			RealIP:           "X-Forwarded-For",
+		},
+	}
+
+	var nextHandlerCalled bool
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		rw.WriteHeader(http.StatusOK)
+	})
+
+	handler, err := plugin.New(ctx, next, cfg, "traefik-get-real-ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create request with non-matching proxy header
+	recorder := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.RemoteAddr = "192.168.1.1:1234"
+	req.Header.Set("X-From-Cdn", "999") // Not in config
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+
+	// Execute request
+	handler.ServeHTTP(recorder, req)
+
+	// Verify next handler was called and status is OK
+	if !nextHandlerCalled {
+		t.Error("Next handler not called when deny403OnFail is disabled")
+	}
+
+	if recorder.Code != http.StatusOK {
+		t.Errorf("Expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+}
+
+// Test the EraseProxyHeaders functionality
+func TestEraseProxyHeaders(t *testing.T) {
+	// Create plugin config with EraseProxyHeaders enabled
+	cfg := plugin.CreateConfig()
+	cfg.EraseProxyHeaders = true
+	cfg.EnableLog = true // Enable logging for verification
+	cfg.Proxy = []plugin.Proxy{
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "1",
+			RealIP:           "X-Forwarded-For",
+		},
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "2",
+			RealIP:           "Client-Ip",
+		},
+		{
+			ProxyHeadername:  "X-From-Cdn",
+			ProxyHeadervalue: "3",
+			RealIP:           "Cf-Connecting-Ip",
+		},
+		{
+			ProxyHeadername:  "*",
+			ProxyHeadervalue: "4",
+			RealIP:           "RemoteAddr",
+		},
+	}
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		// Handler doesn't do anything
+	})
+
+	handler, err := plugin.New(ctx, next, cfg, "traefik-get-real-ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		desc            string
+		xFromProxy      string
+		realIPHeader    string
+		realIP          string
+		remoteAddr      string
+		expectedRealIP  string
+		headersShouldBe map[string]bool // Header name -> should exist after processing
+	}{
+		{
+			desc:           "Proxy 1 - should erase X-From-Cdn but keep X-Forwarded-For",
+			xFromProxy:     "1",
+			realIPHeader:   "X-Forwarded-For",
+			realIP:         "10.0.0.1",
+			remoteAddr:     "192.168.1.1:1234",
+			expectedRealIP: "10.0.0.1",
+			headersShouldBe: map[string]bool{
+				"X-From-Cdn":      false, // Should be erased
+				"X-Forwarded-For": true,  // Should be kept (standard header)
+				"X-Real-Ip":       true,  // Should be set by the plugin
+			},
+		},
+		{
+			desc:           "Proxy 2 - should erase X-From-Cdn and Client-Ip",
+			xFromProxy:     "2",
+			realIPHeader:   "Client-Ip",
+			realIP:         "10.0.1.1",
+			remoteAddr:     "192.168.1.2:1234",
+			expectedRealIP: "10.0.1.1",
+			headersShouldBe: map[string]bool{
+				"X-From-Cdn": false, // Should be erased
+				"Client-Ip":  false, // Should be erased (non-standard header)
+				"X-Real-Ip":  true,  // Should be set by the plugin
+			},
+		},
+		{
+			desc:           "Proxy 3 - should erase X-From-Cdn and Cf-Connecting-Ip",
+			xFromProxy:     "3",
+			realIPHeader:   "Cf-Connecting-Ip",
+			realIP:         "10.0.2.1",
+			remoteAddr:     "192.168.1.3:1234",
+			expectedRealIP: "10.0.2.1",
+			headersShouldBe: map[string]bool{
+				"X-From-Cdn":       false, // Should be erased
+				"Cf-Connecting-Ip": false, // Should be erased (non-standard header)
+				"X-Real-Ip":        true,  // Should be set by the plugin
+			},
+		},
+		{
+			desc:           "Proxy 4 - wildcard proxy should keep RemoteAddr",
+			xFromProxy:     "4",
+			realIPHeader:   "RemoteAddr", // Not actually a header, but a special case
+			realIP:         "",           // Not used for RemoteAddr
+			remoteAddr:     "192.168.1.4:1234",
+			expectedRealIP: "192.168.1.4",
+			headersShouldBe: map[string]bool{
+				"X-From-Cdn": true, // Should not be erased for wildcard
+				"X-Real-Ip":  true, // Should be set by the plugin
+			},
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			req.RemoteAddr = test.remoteAddr
+			req.Header.Set("X-From-Cdn", test.xFromProxy)
+
+			// Set any IP headers specified in the test
+			if test.realIPHeader != "RemoteAddr" && test.realIP != "" {
+				req.Header.Set(test.realIPHeader, test.realIP)
+			}
+
+			// Always set X-Forwarded-For for convenience
+			if test.realIPHeader != "X-Forwarded-For" {
+				req.Header.Set("X-Forwarded-For", "default-xff-value")
+			}
+
+			// Process the request
+			handler.ServeHTTP(recorder, req)
+
+			// Verify X-Real-Ip is set correctly
+			if req.Header.Get("X-Real-Ip") != test.expectedRealIP {
+				t.Errorf("X-Real-Ip not set correctly: expected '%s', got '%s'",
+					test.expectedRealIP, req.Header.Get("X-Real-Ip"))
+			}
+
+			// Verify headers that should be present or absent
+			for header, shouldExist := range test.headersShouldBe {
+				headerExists := req.Header.Get(header) != ""
+				if headerExists != shouldExist {
+					if shouldExist {
+						t.Errorf("Header '%s' should exist but was erased", header)
+					} else {
+						t.Errorf("Header '%s' should be erased but still exists with value: %s",
+							header, req.Header.Get(header))
+					}
+				}
+			}
+		})
+	}
+}
