@@ -7,6 +7,7 @@ summary: By retrieving the correct real IP from single or multiple different loa
 
 testData:
   enableLog: false
+  deny403OnFail: false
   Proxy:
     - proxyHeadername: X-From-Cdn
       proxyHeadervalue: cdn1

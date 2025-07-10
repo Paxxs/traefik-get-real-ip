@@ -84,6 +84,7 @@ http:
       plugin:
         real-ip:
           enableLog: false # default: false, enable to see detailed logs
+          deny403OnFail: true # default: false, when true returns 403 if no matching CDN header found
           Proxy:
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: mf-fun
@@ -118,6 +119,7 @@ http:
 | Option          | Type   | Required | Default | Description                                                 |
 |-----------------|--------|----------|---------|-------------------------------------------------------------|
 | enableLog       | bool   | No       | false   | Enable detailed logging for debugging purposes              |
+| deny403OnFail   | bool   | No       | false   | When true, returns a 403 Forbidden response if no matching CDN header is found |
 | Proxy           | array  | Yes      | -       | Array of proxy configurations                               |
 
 ### Proxy Configuration
@@ -136,4 +138,5 @@ http:
 3. When a match is found, it extracts the IP from the header specified in `realIP`.
 4. The extracted IP is set as the `X-Real-Ip` header.
 5. If `OverwriteXFF` is true, the `X-Forwarded-For` header is also overwritten with the extracted IP.
-6. The request is then passed to the next handler.
+6. If no matching proxy configuration is found and `deny403OnFail` is set to true, the plugin returns a 403 Forbidden response, preventing further request processing.
+7. Otherwise, the request is then passed to the next handler.

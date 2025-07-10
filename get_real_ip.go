@@ -24,23 +24,26 @@ type Proxy struct {
 
 // Config the plugin configuration.
 type Config struct {
-	Proxy     []Proxy `yaml:"proxy"`
-	EnableLog bool    `yaml:"enableLog"` // Enable logging output
+	Proxy         []Proxy `yaml:"proxy"`
+	EnableLog     bool    `yaml:"enableLog"`     // Enable logging output
+	Deny403OnFail bool    `yaml:"deny403OnFail"` // Return 403 when no matching CDN header found
 }
 
 // CreateConfig creates the default plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
-		EnableLog: false, // Logging disabled by default
+		EnableLog:     false, // Logging disabled by default
+		Deny403OnFail: false, // Do not deny by default
 	}
 }
 
 // GetRealIP Define plugin
 type GetRealIP struct {
-	next      http.Handler
-	name      string
-	proxy     []Proxy
-	enableLog bool
+	next          http.Handler
+	name          string
+	proxy         []Proxy
+	enableLog     bool
+	deny403OnFail bool
 }
 
 // New creates and returns a new realip plugin instance.
@@ -49,18 +52,22 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	fmt.Printf("[get-realip] Instance created with %d proxy configurations\n", len(config.Proxy))
 
 	return &GetRealIP{
-		next:      next,
-		name:      name,
-		proxy:     config.Proxy,
-		enableLog: config.EnableLog,
+		next:          next,
+		name:          name,
+		proxy:         config.Proxy,
+		enableLog:     config.EnableLog,
+		deny403OnFail: config.Deny403OnFail,
 	}, nil
 }
 
 // 真正干事情了
 func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	var realIPStr string
+	var foundMatchingProxy bool
+
 	for _, proxy := range g.proxy {
 		if proxy.ProxyHeadername == "*" || req.Header.Get(proxy.ProxyHeadername) == proxy.ProxyHeadervalue {
+			foundMatchingProxy = true
 			g.log("Processing proxy configuration: %s (%s)", proxy.ProxyHeadervalue, proxy.ProxyHeadername)
 
 			// CDN来源确定
@@ -92,6 +99,15 @@ func (g *GetRealIP) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			break
 		}
 	}
+
+	// If deny403OnFail is enabled and no matching proxy configuration was found
+	// return 403 Forbidden response
+	if g.deny403OnFail && !foundMatchingProxy && len(g.proxy) > 0 {
+		g.log("No matching proxy configuration found, returning 403")
+		rw.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	g.next.ServeHTTP(rw, req)
 }
 

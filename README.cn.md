@@ -82,6 +82,7 @@ http:
       plugin:
         real-ip:
           enableLog: false # 默认: false，启用以查看详细日志
+          deny403OnFail: true # 默认: false，设为true时，如果没有匹配的CDN头部则返回403错误
           Proxy:
             - proxyHeadername: X-From-Cdn
               proxyHeadervalue: mf-fun
@@ -116,6 +117,7 @@ http:
 | 选项            | 类型   | 必需   | 默认值  | 说明                                                     |
 |----------------|--------|--------|---------|----------------------------------------------------------|
 | enableLog      | bool   | 否     | false   | 启用详细日志记录，用于调试目的                              |
+| deny403OnFail  | bool   | 否     | false   | 设为true时，如果没有找到匹配的CDN头部，则返回403禁止访问响应   |
 | Proxy          | array  | 是     | -       | 代理配置数组                                               |
 
 ### Proxy 配置
@@ -134,4 +136,5 @@ http:
 3. 找到匹配项后，从`realIP`指定的头部提取IP。
 4. 提取的IP被设置为`X-Real-Ip`头部。
 5. 如果`OverwriteXFF`为true，`X-Forwarded-For`头部也会被提取的IP覆盖。
-6. 然后将请求传递给下一个处理程序。
+6. 如果没有找到匹配的代理配置，且`deny403OnFail`设置为true，插件将返回403 Forbidden响应，阻止进一步的请求处理。
+7. 否则，请求将传递给下一个处理程序。
